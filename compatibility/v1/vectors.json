@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "nip59": {
+    "senderSecret": "1111111111111111111111111111111111111111111111111111111111111111",
+    "senderPublic": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+    "inboxSecret": "2222222222222222222222222222222222222222222222222222222222222222",
+    "inboxPublic": "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+    "wrongSecret": "3333333333333333333333333333333333333333333333333333333333333333",
+    "inner": {
+      "kind": 20078,
+      "content": "opaque-roost-compatibility-payload",
+      "tags": [["t", "beacon"]],
+      "created_at": 1784332800
+    },
+    "expected": {
+      "wrapKind": 1059,
+      "routeTag": "466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+      "expirationDelta": 1382400,
+      "rumorKind": 20078,
+      "rumorContent": "opaque-roost-compatibility-payload",
+      "rumorTags": [["t", "beacon"]],
+      "rumorCreatedAt": 1784332800,
+      "rumorPubkey": "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa",
+      "wrongKeyResult": null
+    }
+  },
+  "fanout": [
+    {
+      "name": "all relays accept",
+      "settled": [
+        { "status": "fulfilled", "value": "" },
+        { "status": "fulfilled", "value": "accepted" }
+      ],
+      "delivered": 2
+    },
+    {
+      "name": "connection failure, rejection and timeout are not delivery",
+      "settled": [
+        { "status": "fulfilled", "value": "connection failure: wss://down.example" },
+        { "status": "rejected", "reason": "blocked" },
+        { "status": "fulfilled", "value": "__flock_relay_timeout__" }
+      ],
+      "delivered": 0
+    },
+    {
+      "name": "one accepted relay is sufficient",
+      "settled": [
+        { "status": "fulfilled", "value": "" },
+        { "status": "fulfilled", "value": "connection failure: wss://down.example" },
+        { "status": "rejected", "reason": "refused" },
+        { "status": "fulfilled", "value": "__flock_relay_timeout__" }
+      ],
+      "delivered": 1
+    }
+  ]
+}

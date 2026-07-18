@@ -13,6 +13,7 @@
   },
   "files": [
     "dist",
+    "compatibility",
     "LICENSE",
     "README.md"
   ],

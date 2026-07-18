@@ -8,6 +8,10 @@ This package was extracted from Flock for reuse by Fledgling and other clients.
 It is framework-free and owns no storage, UI, environment configuration, relay
 defaults, or identity keys. Callers inject those concerns.
 
+The public `compatibility/v1` fixtures freeze NIP-59 envelope semantics,
+expiry, wrong-key failure and relay fan-out accounting for cross-repository
+consumers.
+
 ## Install
 
 ```bash
