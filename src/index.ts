@@ -38,3 +38,6 @@ export {
   subscribeGiftWraps,
   subscribeProfiles,
 } from './transport.js'
+
+export { createOutbox } from './outbox.js'
+export type { OutboxItem, OutboxStore, Outbox } from './outbox.js'
