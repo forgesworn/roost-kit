@@ -61,8 +61,8 @@ export async function publishSigned(relays: readonly string[], signed: { id: str
 /** One-shot "give me the newest matching event" fetch: resolves early once EOSE
  *  passes with a match in hand, otherwise waits the full timeout for slow
  *  relays. Shared by {@link fetchWordInvite} (by `#t` tag) and
- *  {@link fetchGiftWrap} (by `#p` tag) — the two one-shot lookups the word-invite
- *  flow needs (docs/plans/2026-07-04-mesh-bridge-goal.md Task C4). */
+ *  {@link fetchGiftWrap} (by `#p` tag) — the two one-shot lookups the
+ *  word-invite flow's two hops need (covey-kit's `wordcode.ts`/`inbox.ts`). */
 function fetchNewest<T extends { created_at: number }>(
   relays: readonly string[],
   filter: Record<string, unknown>,
@@ -108,8 +108,8 @@ export function fetchWordInvite(
 
 /** One-shot fetch of a NIP-59 gift wrap (kind 1059) filed under a `#p` tag —
  *  the word-invite's second hop (the real invite, gift-wrapped to the one-time
- *  reference pubkey; see app/src/invite.ts's `readInviteViaRef`). Resolves the
- *  NEWEST match, or null if none arrives before the deadline. */
+ *  reference pubkey; see covey-kit's `inbox.ts`'s `readInviteViaRef`). Resolves
+ *  the NEWEST match, or null if none arrives before the deadline. */
 export function fetchGiftWrap(
   relays: readonly string[],
   pTag: string,
@@ -144,8 +144,10 @@ export function subscribeGiftWraps(
 /**
  * Fetch public kind:0 profiles for a set of pubkeys from the public profile
  * relays. One-shot-ish: stays open briefly to collect replies, then the caller
- * closes it. Returns an unsubscribe fn. (Privacy: this is the ONE place flock
- * touches public relays — opt-in only; see relays.ts / store.showProfiles.)
+ * closes it. Returns an unsubscribe fn. (Privacy: this is the one place this
+ * kit touches public relays — opt-in only, and only ever called if the app
+ * decides to; the kit itself takes no position on when. See relays.ts's
+ * `PROFILE_RELAYS` split for the private/public separation this relies on.)
  */
 export function subscribeProfiles(
   relays: readonly string[],

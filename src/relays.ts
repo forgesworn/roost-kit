@@ -1,7 +1,8 @@
 // Relay sets — adopted from pallasite/src/credits.ts, applied with a privacy split.
 //
-// flock's threat model treats relays as untrusted (see docs/PRIVACY.md), so the
-// two sets are used for DIFFERENT purposes:
+// This kit's threat model treats relays as untrusted (same discipline flock's
+// own threat model documents for the sibling ecosystem), so the two sets are
+// used for DIFFERENT purposes:
 //
 //   PRIVATE_RELAYS  — our own, no-log relay(s). ALL sensitive traffic goes here
 //                     (location beacons, alerts, check-ins, group state,
