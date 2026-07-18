@@ -27,10 +27,18 @@ export function createOutbox(store: OutboxStore) {
       const dropped = this.prune(nowSec)
       let sent = 0
       const still: OutboxItem[] = []
-      for (const item of items) {
+      const snapshot = items
+      const snapshotLen = snapshot.length
+      for (const item of snapshot) {
         try { await publish(item.relays, item.event); sent++ } catch { still.push(item) }
       }
-      items = still
+      // `items` may have been reassigned by a concurrent enqueue() while the
+      // loop above was awaiting a publish — items.slice(snapshotLen) is
+      // exactly what landed since the snapshot. Keep those alongside
+      // whatever from the snapshot itself failed to send (`still`), rather
+      // than `items = still`, which would silently drop any enqueue that
+      // raced this flush.
+      items = [...still, ...items.slice(snapshotLen)]
       persist()
       return { sent, dropped, remaining: items.length }
     },

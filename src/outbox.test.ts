@@ -185,5 +185,32 @@ describe('outbox', () => {
         ['relay-c'],
       ])
     })
+
+    it('preserves an item enqueued DURING a slow publish, instead of dropping it (concurrent enqueue/flush race)', async () => {
+      // A deferred gate: the 'slow' item's publish doesn't resolve until the
+      // test explicitly releases it, giving the test a window to enqueue a
+      // NEW item while flush() is still mid-loop (e.g. another circle's
+      // publish landing concurrently, or a fresh beacon queued because this
+      // one relay attempt is still in flight).
+      let release: (() => void) | undefined
+      const gate = new Promise<void>((resolve) => { release = resolve })
+      const publish = async (relays: readonly string[], event: SignedEvent) => {
+        if (event.id === 'slow') await gate
+      }
+
+      outbox.enqueue({ ...stubEvent(), id: 'slow' }, ['relay1'], 1000)
+
+      const flushPromise = outbox.flush(publish, 1100)
+      // flush() is now suspended awaiting `gate` inside publish('slow', …) —
+      // JS being single-threaded, this line only runs because that await
+      // yielded control back here.
+      outbox.enqueue({ ...stubEvent(), id: 'concurrent' }, ['relay2'], 1050)
+      release?.()
+
+      const result = await flushPromise
+      expect(result.sent).toBe(1)
+      expect(result.remaining).toBe(1)
+      expect(store.data.map((i) => i.event.id)).toEqual(['concurrent'])
+    })
   })
 })
