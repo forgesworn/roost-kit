@@ -66,6 +66,47 @@ describe('gift-wrap-everything: signals via a shared inbox key', () => {
   })
 })
 
+describe('sender authentication (forgery rejection)', () => {
+  // The group-inbox key is held by EVERY member, so decrypting a wrap proves
+  // nothing about who sent it. giftUnwrap must authenticate the seal signature
+  // and bind the rumor author to it, else any member (or anyone who saw an
+  // invite) could forge a signal attributed to another member.
+
+  it('rejects a rumor whose author differs from the seal signer', async () => {
+    const attacker = stubSigner()
+    const victim = stubSigner()
+    const inbox = keypair() // the attacker holds the shared inbox key, like every member
+    // Seal a rumor CLAIMING to be from the victim, but sign the seal with the
+    // attacker's own key (they cannot sign as the victim).
+    const rumor = { pubkey: victim.pubkey, created_at: 1, kind: 20_078, content: 'fake-beacon', tags: [['t', 'beacon']] }
+    const sealContent = await attacker.nip44Encrypt(inbox.pk, JSON.stringify(rumor))
+    const seal = await attacker.signEvent({ kind: 13, content: sealContent, tags: [], created_at: 1 })
+    const ephSk = generateSecretKey()
+    const wrapContent = nip44encrypt(JSON.stringify(seal), getConversationKey(ephSk, inbox.pk))
+    expect(await giftUnwrap(rawNip44Decrypt(inbox.sk), { pubkey: getPublicKey(ephSk), content: wrapContent })).toBeNull()
+  })
+
+  it('rejects a seal that claims a signer it cannot sign for (bad signature)', async () => {
+    const attacker = stubSigner()
+    const victim = stubSigner()
+    const inbox = keypair()
+    const rumor = { pubkey: victim.pubkey, created_at: 1, kind: 20_078, content: 'fake', tags: [['t', 'beacon']] }
+    const sealContent = await attacker.nip44Encrypt(inbox.pk, JSON.stringify(rumor))
+    const seal = await attacker.signEvent({ kind: 13, content: sealContent, tags: [], created_at: 1 })
+    const forgedSeal = { ...seal, pubkey: victim.pubkey } // claim the victim as signer → signature no longer valid
+    const ephSk = generateSecretKey()
+    const wrapContent = nip44encrypt(JSON.stringify(forgedSeal), getConversationKey(ephSk, inbox.pk))
+    expect(await giftUnwrap(rawNip44Decrypt(inbox.sk), { pubkey: getPublicKey(ephSk), content: wrapContent })).toBeNull()
+  })
+
+  it('still accepts a legitimately signed wrap (no false positive)', async () => {
+    const sender = stubSigner()
+    const inbox = keypair()
+    const wrap = await giftWrap(sender, inbox.pk, { kind: 20_078, content: 'blob', tags: [['t', 'beacon']] })
+    expect((await giftUnwrap(rawNip44Decrypt(inbox.sk), wrap))?.pubkey).toBe(sender.pubkey)
+  })
+})
+
 describe('NIP-40 retention bound (audit Slice 6)', () => {
   it('every wrap type expires the same uniform window after its backdated created_at', async () => {
     const inbox = keypair()

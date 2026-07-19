@@ -10,7 +10,7 @@
 // Because a wrap is self-contained, opaque, encrypted bytes, it can travel over
 // ANY transport — a Nostr relay today, a LoRa mesh (Meshtastic/MeshCore) later.
 
-import { finalizeEvent, generateSecretKey, getEventHash } from 'nostr-tools/pure'
+import { finalizeEvent, generateSecretKey, getEventHash, verifyEvent } from 'nostr-tools/pure'
 import { getConversationKey, encrypt as nip44encrypt, decrypt as nip44decrypt } from 'nostr-tools/nip44'
 import type { Signer, SignedEvent } from './signer.js'
 
@@ -62,8 +62,20 @@ export async function giftUnwrap(
   wrap: { pubkey: string; content: string },
 ): Promise<Rumor | null> {
   try {
-    const seal = JSON.parse(await decrypt(wrap.pubkey, wrap.content)) as { pubkey: string; content: string }
-    return JSON.parse(await decrypt(seal.pubkey, seal.content)) as Rumor
+    const seal = JSON.parse(await decrypt(wrap.pubkey, wrap.content)) as SignedEvent
+    // Authenticate the sender before trusting anything inside. The seal (kind:13)
+    // is signed by the sender's REAL key, but the group-inbox channel decrypts
+    // with a secret EVERY member holds — so without verifying the seal's
+    // signature, any member (or anyone who ever saw an invite) could craft a seal
+    // naming a victim's pubkey and forge a signal as them. verifyEvent proves
+    // seal.pubkey actually signed the seal; requiring rumor.pubkey === seal.pubkey
+    // (NIP-59) then binds the claimed author to that proven signer. A legitimate
+    // wrap always satisfies both (giftWrap signs the seal with the rumor author's
+    // key), so this rejects only forged/tampered wraps.
+    if (!verifyEvent(seal)) return null
+    const rumor = JSON.parse(await decrypt(seal.pubkey, seal.content)) as Rumor
+    if (rumor.pubkey !== seal.pubkey) return null
+    return rumor
   } catch {
     return null
   }
