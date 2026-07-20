@@ -16,6 +16,18 @@ function getPool(): SimplePool {
   return pool
 }
 
+/** Tear the shared relay pool down so the NEXT getPool() builds a fresh one with
+ *  brand-new WebSocket connections. A pool's sockets can go silently stale on
+ *  mobile — TCP still ESTABLISHED, but publishes stop landing and subscriptions
+ *  stop delivering, and neither enablePing nor re-issuing REQs on the SAME pool
+ *  recovers it; only reconnecting does. `destroy()` closes every open connection
+ *  first, so this is the recovery a caller reaches for when it suspects a dead
+ *  pool (app resumed, user opened a read surface, periodic failsafe). */
+export function resetPool(): void {
+  pool?.destroy()
+  pool = null
+}
+
 // Per-relay publish deadline — a safety alert must not hang on one slow or dead
 // relay when another may already have accepted it.
 const PUBLISH_TIMEOUT_MS = 8000

@@ -37,6 +37,7 @@ export {
   fetchGiftWrap,
   subscribeGiftWraps,
   subscribeProfiles,
+  resetPool,
 } from './transport.js'
 
 export { createOutbox } from './outbox.js'
