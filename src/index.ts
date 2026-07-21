@@ -33,6 +33,8 @@ export {
   RELAY_TIMEOUT,
   deliveredCount,
   publishSigned,
+  fetchWordInvites,
+  fetchGiftWraps,
   fetchWordInvite,
   fetchGiftWrap,
   subscribeGiftWraps,

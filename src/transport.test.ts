@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const pool = vi.hoisted(() => ({ subscribes: 0, destroys: 0 }))
+const pool = vi.hoisted(() => ({ subscribes: 0, destroys: 0, nextEvents: [] as unknown[] }))
 vi.mock('nostr-tools/pool', () => ({
   SimplePool: class {
-    subscribeMany(): { close(): void } {
+    subscribeMany(_relays: unknown, _filter: unknown, handlers: { onevent?: (e: unknown) => void; oneose?: () => void }): { close(): void } {
       pool.subscribes += 1
+      const events = pool.nextEvents
+      // Deliver asynchronously, as the real pool does (so `sub` is assigned first).
+      queueMicrotask(() => { for (const e of events) handlers.onevent?.(e); handlers.oneose?.() })
       return { close: () => { /* noop */ } }
     }
     destroy(): void { pool.destroys += 1 }
@@ -12,7 +15,7 @@ vi.mock('nostr-tools/pool', () => ({
   },
 }))
 
-import { deliveredCount, RELAY_TIMEOUT, subscribeGiftWraps, resetPool } from './transport.js'
+import { deliveredCount, RELAY_TIMEOUT, subscribeGiftWraps, resetPool, fetchGiftWraps } from './transport.js'
 
 // Ported from flock's `services.test.ts` — transport half only. The
 // `currentPosition` describe block there exercised the geolocation half of
@@ -69,5 +72,26 @@ describe('resilient subscriptions survive resetPool', () => {
     unsub()
     resetPool()
     expect(pool.subscribes).toBe(1) // no rebuild for a closed subscription
+  })
+})
+
+describe('fetchGiftWraps returns ALL candidates so junk cannot shadow the real one', () => {
+  beforeEach(() => { pool.subscribes = 0; pool.destroys = 0; pool.nextEvents = [] })
+
+  it('returns every match, newest-first — the caller tries each rather than trusting one pick', async () => {
+    pool.nextEvents = [
+      { id: 'real', pubkey: 'a', content: 'real-invite', created_at: 100 },
+      { id: 'junk', pubkey: 'z', content: 'junk', created_at: 999 }, // attacker: created_at = now
+      { id: 'mid', pubkey: 'b', content: 'other', created_at: 500 },
+    ]
+    const all = await fetchGiftWraps(['wss://r'], 'ptag')
+    // All present, newest-first — so a caller can skip the undecryptable 'junk'
+    // and still reach 'real', which a single max-created_at pick would have missed.
+    expect(all.map((e) => e.id)).toEqual(['junk', 'mid', 'real'])
+  })
+
+  it('resolves an empty array when nothing matches', async () => {
+    pool.nextEvents = []
+    expect(await fetchGiftWraps(['wss://r'], 'ptag', 50)).toEqual([])
   })
 })
