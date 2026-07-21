@@ -23,9 +23,40 @@ function getPool(): SimplePool {
  *  recovers it; only reconnecting does. `destroy()` closes every open connection
  *  first, so this is the recovery a caller reaches for when it suspects a dead
  *  pool (app resumed, user opened a read surface, periodic failsafe). */
+/** Live subscriptions, so resetPool can rebuild them on the fresh pool. */
+const liveSubscriptions = new Set<() => void>()
+
 export function resetPool(): void {
   pool?.destroy()
   pool = null
+  // Rebuild every live subscription on the fresh pool. destroy() closed them all,
+  // so without this resetPool would silently stop INCOMING delivery — the exact
+  // symptom it exists to cure. Each rebuild re-registers itself.
+  const rebuilds = [...liveSubscriptions]
+  liveSubscriptions.clear()
+  for (const rebuild of rebuilds) rebuild()
+}
+
+/** Open a pool subscription that SURVIVES resetPool: it re-opens on the fresh pool
+ *  automatically, so a consumer's staleness-recovery reset never orphans it. The
+ *  returned unsubscribe deregisters it (no rebuild after the caller is done). */
+function resilientSubscribe<E>(
+  relays: readonly string[],
+  filter: Record<string, unknown>,
+  onEvent: (e: E) => void,
+): () => void {
+  const open = (): { close(): void } =>
+    getPool().subscribeMany([...relays], filter as never, { onevent: onEvent as (e: unknown) => void }) as { close(): void }
+  let sub = open()
+  const rebuild = (): void => {
+    sub = open()
+    liveSubscriptions.add(rebuild)
+  }
+  liveSubscriptions.add(rebuild)
+  return () => {
+    liveSubscriptions.delete(rebuild)
+    try { sub.close() } catch { /* already closed */ }
+  }
 }
 
 // Per-relay publish deadline — a safety alert must not hang on one slow or dead
@@ -145,12 +176,7 @@ export function subscribeGiftWraps(
   pTag: string,
   onEvent: (e: { id: string; pubkey: string; content: string; tags: string[][]; created_at: number }) => void,
 ): () => void {
-  const sub = getPool().subscribeMany(
-    [...relays],
-    { kinds: [1059], '#p': [pTag] },
-    { onevent: onEvent },
-  )
-  return () => sub.close()
+  return resilientSubscribe(relays, { kinds: [1059], '#p': [pTag] }, onEvent)
 }
 
 /**
@@ -167,10 +193,5 @@ export function subscribeProfiles(
   onEvent: (e: { pubkey: string; content: string; created_at: number }) => void,
 ): () => void {
   if (!pubkeys.length) return () => { /* noop */ }
-  const sub = getPool().subscribeMany(
-    [...relays],
-    { kinds: [0], authors: pubkeys },
-    { onevent: onEvent },
-  )
-  return () => sub.close()
+  return resilientSubscribe(relays, { kinds: [0], authors: pubkeys }, onEvent)
 }
