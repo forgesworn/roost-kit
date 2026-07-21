@@ -1,5 +1,18 @@
-import { describe, it, expect } from 'vitest'
-import { deliveredCount, RELAY_TIMEOUT } from './transport.js'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+const pool = vi.hoisted(() => ({ subscribes: 0, destroys: 0 }))
+vi.mock('nostr-tools/pool', () => ({
+  SimplePool: class {
+    subscribeMany(): { close(): void } {
+      pool.subscribes += 1
+      return { close: () => { /* noop */ } }
+    }
+    destroy(): void { pool.destroys += 1 }
+    publish(): unknown[] { return [] }
+  },
+}))
+
+import { deliveredCount, RELAY_TIMEOUT, subscribeGiftWraps, resetPool } from './transport.js'
 
 // Ported from flock's `services.test.ts` — transport half only. The
 // `currentPosition` describe block there exercised the geolocation half of
@@ -31,5 +44,30 @@ describe('deliveredCount', () => {
 
   it('treats an empty/undefined fulfilled value as accepted (relays often ack with no reason)', () => {
     expect(deliveredCount([ok(undefined), ok(null)])).toBe(2)
+  })
+})
+
+describe('resilient subscriptions survive resetPool', () => {
+  beforeEach(() => { pool.subscribes = 0; pool.destroys = 0 })
+
+  it('rebuilds a live subscription on the fresh pool after resetPool', () => {
+    const unsub = subscribeGiftWraps(['wss://r'], 'ptag', () => { /* noop */ })
+    expect(pool.subscribes).toBe(1)
+
+    resetPool()
+    expect(pool.destroys).toBe(1)
+    expect(pool.subscribes).toBe(2) // re-opened on the fresh pool, not orphaned
+
+    // After the caller unsubscribes, a further reset must NOT re-open it.
+    unsub()
+    resetPool()
+    expect(pool.subscribes).toBe(2)
+  })
+
+  it('never rebuilds a subscription the caller already closed', () => {
+    const unsub = subscribeGiftWraps(['wss://r'], 'ptag', () => { /* noop */ })
+    unsub()
+    resetPool()
+    expect(pool.subscribes).toBe(1) // no rebuild for a closed subscription
   })
 })
