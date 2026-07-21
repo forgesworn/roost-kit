@@ -106,42 +106,45 @@ export async function publishSigned(relays: readonly string[], signed: { id: str
  *  relays. Shared by {@link fetchWordInvite} (by `#t` tag) and
  *  {@link fetchGiftWrap} (by `#p` tag) — the two one-shot lookups the
  *  word-invite flow's two hops need (covey-kit's `wordcode.ts`/`inbox.ts`). */
-function fetchNewest<T extends { created_at: number }>(
+/** Collect ALL matching events, newest-first. Callers must try candidates rather
+ *  than trust a single pick: a gift wrap's created_at is randomised up to 2 days
+ *  into the past (metadata-hiding), so "highest created_at" is NOT "most recent" —
+ *  and anyone who knows the tag can publish a junk event with created_at=now to
+ *  shadow the real one. Newest-first is only a hint; try each until one is valid. */
+function fetchAllMatching<T extends { created_at: number }>(
   relays: readonly string[],
   filter: Record<string, unknown>,
   toResult: (e: { id: string; pubkey: string; content: string; created_at: number }) => T,
   timeoutMs: number,
-): Promise<T | null> {
+): Promise<T[]> {
   return new Promise((resolve) => {
-    let best: T | null = null
+    const results: T[] = []
     let settled = false
     const done = (): void => {
       if (settled) return
       settled = true
       try { sub.close() } catch { /* already closed */ }
       clearTimeout(timer)
-      resolve(best)
+      resolve([...results].sort((a, b) => b.created_at - a.created_at))
     }
     const timer = setTimeout(done, timeoutMs)
     const sub = getPool().subscribeMany([...relays], filter as never, {
-      onevent: (e: { id: string; pubkey: string; content: string; created_at: number }) => {
-        const r = toResult(e)
-        if (!best || r.created_at > best.created_at) best = r
-      },
-      oneose: () => { if (best) done() },
+      onevent: (e: { id: string; pubkey: string; content: string; created_at: number }) => { results.push(toResult(e)) },
+      oneose: () => { if (results.length) done() },
     })
   })
 }
 
-/** One-shot fetch of a parked spoken-invite reference by its `#t` tag. Resolves
- *  the NEWEST match, or null if none arrives before the deadline. */
-export function fetchWordInvite(
+/** Fetch EVERY parked spoken-invite reference under a `#t` tag, newest-first — the
+ *  caller decodes each until one is valid, so a junk event under the (low-entropy,
+ *  guessable) word-code tag cannot shadow the real reference. */
+export function fetchWordInvites(
   relays: readonly string[],
   kind: number,
   tag: string,
   timeoutMs = 6000,
-): Promise<{ id: string; content: string; created_at: number } | null> {
-  return fetchNewest(
+): Promise<{ id: string; content: string; created_at: number }[]> {
+  return fetchAllMatching(
     relays,
     { kinds: [kind], '#t': [tag] },
     (e) => ({ id: e.id, content: e.content, created_at: e.created_at }),
@@ -149,21 +152,43 @@ export function fetchWordInvite(
   )
 }
 
-/** One-shot fetch of a NIP-59 gift wrap (kind 1059) filed under a `#p` tag —
+/** Fetch EVERY NIP-59 gift wrap (kind 1059) filed under a `#p` tag, newest-first —
  *  the word-invite's second hop (the real invite, gift-wrapped to the one-time
- *  reference pubkey; see covey-kit's `inbox.ts`'s `readInviteViaRef`). Resolves
- *  the NEWEST match, or null if none arrives before the deadline. */
-export function fetchGiftWrap(
+ *  reference pubkey; see covey-kit's `inbox.ts`'s `readInviteViaRef`). The caller
+ *  tries to unwrap each, so a junk wrap cannot shadow the real invite and the
+ *  randomised wrap created_at cannot mis-order two valid invites. */
+export function fetchGiftWraps(
   relays: readonly string[],
   pTag: string,
   timeoutMs = 6000,
-): Promise<{ id: string; pubkey: string; content: string; created_at: number } | null> {
-  return fetchNewest(
+): Promise<{ id: string; pubkey: string; content: string; created_at: number }[]> {
+  return fetchAllMatching(
     relays,
     { kinds: [1059], '#p': [pTag] },
     (e) => ({ id: e.id, pubkey: e.pubkey, content: e.content, created_at: e.created_at }),
     timeoutMs,
   )
+}
+
+/** @deprecated Prefer {@link fetchWordInvite}s — a single max-created_at pick can be
+ *  shadowed by junk and mis-orders two valid references (randomised created_at). */
+export function fetchWordInvite(
+  relays: readonly string[],
+  kind: number,
+  tag: string,
+  timeoutMs = 6000,
+): Promise<{ id: string; content: string; created_at: number } | null> {
+  return fetchWordInvites(relays, kind, tag, timeoutMs).then((r) => r[0] ?? null)
+}
+
+/** @deprecated Prefer {@link fetchGiftWraps} — a single max-created_at pick can be
+ *  shadowed by junk and mis-orders two valid invites (randomised created_at). */
+export function fetchGiftWrap(
+  relays: readonly string[],
+  pTag: string,
+  timeoutMs = 6000,
+): Promise<{ id: string; pubkey: string; content: string; created_at: number } | null> {
+  return fetchGiftWraps(relays, pTag, timeoutMs).then((r) => r[0] ?? null)
 }
 
 /** Subscribe to NIP-59 gift wraps (kind 1059) filed under a `#p` tag I own, across
