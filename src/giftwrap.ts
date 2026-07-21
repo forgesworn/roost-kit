@@ -75,6 +75,17 @@ export async function giftUnwrap(
     if (!verifyEvent(seal)) return null
     const rumor = JSON.parse(await decrypt(seal.pubkey, seal.content)) as Rumor
     if (rumor.pubkey !== seal.pubkey) return null
+    // The rumor's `id` rode inside the decrypted JSON, so a sender could set it to
+    // anything — two distinct messages sharing one id (to defeat dedup) or one
+    // message under many ids. Recompute it from the content so any consumer that
+    // keys dedup / threading on rumor.id can trust it is content-bound.
+    rumor.id = getEventHash({
+      pubkey: rumor.pubkey,
+      created_at: rumor.created_at,
+      kind: rumor.kind,
+      tags: rumor.tags,
+      content: rumor.content,
+    })
     return rumor
   } catch {
     return null

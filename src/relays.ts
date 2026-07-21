@@ -64,8 +64,16 @@ export function parseRelayList(text: string): string[] {
  *
  *  Takes `privateRelays` explicitly (the kit has no baked-in PRIVATE_RELAYS
  *  constant to close over — see `createRelayConfig`). */
+/** Canonicalise a relay URL for comparison: trim, lowercase, drop trailing slashes.
+ *  nostr-tools normalises URLs internally, so cosmetic variance (a trailing slash,
+ *  case) must not make the same relay read as "unknown" and fire a false warning. */
+function normaliseRelayUrl(url: string): string {
+  return url.trim().toLowerCase().replace(/\/+$/, '')
+}
+
 export function isKnownNoLogRelay(url: string, privateRelays: readonly string[]): boolean {
-  return privateRelays.includes(url)
+  const target = normaliseRelayUrl(url)
+  return privateRelays.some((r) => normaliseRelayUrl(r) === target)
 }
 
 /** The entries in `list` that fall outside the vetted set, in order — empty when
