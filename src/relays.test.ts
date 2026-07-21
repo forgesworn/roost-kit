@@ -98,6 +98,13 @@ describe('isKnownNoLogRelay / unknownRelays (F5 — warn on an unvetted relay)',
     expect(isKnownNoLogRelay('wss://some-random-relay.example', PRIVATE_RELAYS)).toBe(false)
   })
 
+  it('recognises a known relay despite a trailing slash, case, or surrounding whitespace', () => {
+    const known = PRIVATE_RELAYS[0]
+    expect(isKnownNoLogRelay(`${known}/`, PRIVATE_RELAYS)).toBe(true)
+    expect(isKnownNoLogRelay(known.toUpperCase(), PRIVATE_RELAYS)).toBe(true)
+    expect(isKnownNoLogRelay(`  ${known}  `, PRIVATE_RELAYS)).toBe(true)
+  })
+
   it('unknownRelays returns only the entries outside the vetted set, order preserved', () => {
     expect(unknownRelays([...PRIVATE_RELAYS, 'wss://nos.lol'], PRIVATE_RELAYS)).toEqual(['wss://nos.lol'])
     expect(unknownRelays([...PRIVATE_RELAYS], PRIVATE_RELAYS)).toEqual([])

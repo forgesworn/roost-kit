@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure'
+import { generateSecretKey, getPublicKey, finalizeEvent, getEventHash } from 'nostr-tools/pure'
 import { getConversationKey, encrypt as nip44encrypt, decrypt as nip44decrypt } from 'nostr-tools/nip44'
 import type { EventTemplate, Signer, SignedEvent } from './signer.js'
 import { giftWrap, giftUnwrap, rawNip44Decrypt, WRAP_EXPIRY_SECONDS } from './giftwrap.js'
@@ -104,6 +104,26 @@ describe('sender authentication (forgery rejection)', () => {
     const inbox = keypair()
     const wrap = await giftWrap(sender, inbox.pk, { kind: 20_078, content: 'blob', tags: [['t', 'beacon']] })
     expect((await giftUnwrap(rawNip44Decrypt(inbox.sk), wrap))?.pubkey).toBe(sender.pubkey)
+  })
+})
+
+describe('rumor id is content-bound (not attacker-chosen)', () => {
+  it('recomputes an inconsistent id in the sealed rumor from its content', async () => {
+    const sender = stubSigner()
+    const inbox = keypair()
+    // A legitimately-signed seal whose inner rumor carries a BOGUS id — a sender
+    // could do this to collide two messages' ids and defeat a consumer's dedup.
+    const rumorFields = { pubkey: sender.pubkey, created_at: 1, kind: 20_078, content: 'beacon', tags: [['t', 'beacon']] }
+    const forged = { ...rumorFields, id: 'de'.repeat(32) }
+    const sealContent = await sender.nip44Encrypt(inbox.pk, JSON.stringify(forged))
+    const seal = await sender.signEvent({ kind: 13, content: sealContent, tags: [], created_at: 1 })
+    const ephSk = generateSecretKey()
+    const wrapContent = nip44encrypt(JSON.stringify(seal), getConversationKey(ephSk, inbox.pk))
+
+    const rumor = await giftUnwrap(rawNip44Decrypt(inbox.sk), { pubkey: getPublicKey(ephSk), content: wrapContent })
+    expect(rumor).not.toBeNull()
+    expect(rumor?.id).toBe(getEventHash(rumorFields)) // content hash…
+    expect(rumor?.id).not.toBe('de'.repeat(32))        // …not the attacker's value
   })
 })
 
