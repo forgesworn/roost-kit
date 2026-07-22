@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-const pool = vi.hoisted(() => ({ subscribes: 0, destroys: 0, nextEvents: [] as unknown[] }))
+const pool = vi.hoisted(() => ({ subscribes: 0, destroys: 0, nextEvents: [] as unknown[], publishResults: [] as Promise<unknown>[] }))
 vi.mock('nostr-tools/pool', () => ({
   SimplePool: class {
     subscribeMany(_relays: unknown, _filter: unknown, handlers: { onevent?: (e: unknown) => void; oneose?: () => void }): { close(): void } {
@@ -11,11 +11,11 @@ vi.mock('nostr-tools/pool', () => ({
       return { close: () => { /* noop */ } }
     }
     destroy(): void { pool.destroys += 1 }
-    publish(): unknown[] { return [] }
+    publish(): Promise<unknown>[] { return pool.publishResults }
   },
 }))
 
-import { deliveredCount, RELAY_TIMEOUT, subscribeGiftWraps, resetPool, fetchGiftWraps } from './transport.js'
+import { deliveredCount, RELAY_TIMEOUT, subscribeGiftWraps, resetPool, fetchGiftWraps, publishSigned } from './transport.js'
 
 // Ported from flock's `services.test.ts` — transport half only. The
 // `currentPosition` describe block there exercised the geolocation half of
@@ -47,6 +47,30 @@ describe('deliveredCount', () => {
 
   it('treats an empty/undefined fulfilled value as accepted (relays often ack with no reason)', () => {
     expect(deliveredCount([ok(undefined), ok(null)])).toBe(2)
+  })
+})
+
+describe('publishSigned', () => {
+  const signed = { id: 'evt1', sig: 'sig1', kind: 1059 }
+
+  beforeEach(() => { pool.publishResults = [] })
+
+  it('resolves with the signed event once any relay accepts it', async () => {
+    pool.publishResults = [Promise.resolve('')]
+    await expect(publishSigned(['wss://r'], signed)).resolves.toBe(signed)
+  })
+
+  it('resolves when only some relays accept it in a mixed fan-out', async () => {
+    pool.publishResults = [Promise.resolve('connection failure: ws://down.example'), Promise.resolve('')]
+    await expect(publishSigned(['wss://down', 'wss://up'], signed)).resolves.toBe(signed)
+  })
+
+  it('throws when every relay rejects, fails to connect, or times out', async () => {
+    pool.publishResults = [
+      Promise.reject(new Error('blocked: pow required')),
+      Promise.resolve('connection failure: ws://down.example'),
+    ]
+    await expect(publishSigned(['wss://r1', 'wss://r2'], signed)).rejects.toThrow('No relay accepted the event')
   })
 })
 

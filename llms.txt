@@ -1,0 +1,114 @@
+# @forgesworn/roost-kit
+
+> Nostr transport primitives for private circles: NIP-59 gift wraps, relay fan-out, rotating inboxes, and a pre-signed offline outbox. Extracted from Flock for reuse by Fledgling and other clients — framework-free, and owns no storage, UI, relay defaults, or identity keys; callers inject those concerns, and relays are treated as untrusted throughout.
+
+ESM-only, Node.js 22+. Single entry point — no subpath exports.
+
+## Install
+
+```bash
+npm install @forgesworn/roost-kit
+```
+
+Not yet published to npm. Until it is, pin an immutable Git commit:
+
+```json
+{
+  "dependencies": {
+    "@forgesworn/roost-kit": "git+https://github.com/forgesworn/roost-kit.git#<commit>"
+  }
+}
+```
+
+## Exports
+
+### Signer contract
+
+Interfaces only — the wire contract every gift-wrapped event is signed and NIP-44 encrypted through. Implementations (e.g. covey-kit's `LocalSigner`) live outside this kit; roost only depends on the shape.
+
+- `Signer` → `{ pubkey, signEvent(template), nip44Encrypt(peerPubkey, plaintext), nip44Decrypt(peerPubkey, ciphertext) }`
+- `SignedEvent`, `EventTemplate` — Nostr event shapes
+
+### NIP-59 gift wraps
+
+- `giftWrap(signer, recipientPk, inner, routeTag?)` → `Promise<SignedEvent>` — seals with the sender's real key, wraps with a throwaway key
+- `giftUnwrap(decrypt, wrap)` → `Promise<Rumor | null>` — verifies the seal signature and binds the rumor author before trusting the content
+- `rawNip44Decrypt(skBytes)` → `(peerPk, ciphertext) => string` — a decrypt closure for a raw secret key (shared group-inbox key)
+- `WRAP_EXPIRY_SECONDS` → 16 days; the NIP-40 `expiration` every wrap carries
+
+### Relay policy (caller-owned)
+
+No defaults are baked in — the app supplies its own boot config.
+
+- `createRelayConfig(opts?)` → `{ PRIVATE_RELAYS, ONION_RELAYS, PROFILE_RELAYS }`
+- `parseRelayList(text)` → `string[]` — splits a pasted list on newlines, commas, or whitespace
+- `isKnownNoLogRelay(url, privateRelays)` → `boolean`
+- `unknownRelays(list, privateRelays)` → `string[]`
+- `torRouteReady(opts)` → `boolean`
+- `effectiveRelays(opts)` → `string[]` — fail-loud: throws rather than silently falling back from Tor to clearnet
+- `resolveRelays(privateRelays, saved?)` → `string[]` — migrates a legacy single `relayUrl`, always returns a non-empty cleaned set
+
+### Relay fan-out & transport
+
+- `publishSigned(relays, signed)` → `Promise<signed>` — fans an already-signed event out to every relay; succeeds if any accepts, throws if none do
+- `deliveredCount(results)` → `number` — how many settled publishes genuinely reached a relay
+- `RELAY_TIMEOUT` — sentinel a publish resolves to when it outruns the per-relay timeout
+- `fetchGiftWraps(relays, pTag, timeoutMs?)` → `Promise<{ id, pubkey, content, created_at }[]>` — every matching wrap, newest-first
+- `fetchWordInvites(relays, kind, tag, timeoutMs?)` → `Promise<{ id, content, created_at }[]>` — every matching reference, newest-first
+- `fetchGiftWrap`, `fetchWordInvite` — deprecated single-result wrappers around the two above; a single max-created_at pick can be shadowed by a junk event
+- `subscribeGiftWraps(relays, pTag, onEvent)` → unsubscribe `fn` — survives `resetPool` by rebuilding on the fresh pool
+- `subscribeProfiles(relays, pubkeys, onEvent)` → unsubscribe `fn` — public kind:0 profile lookups only
+- `resetPool()` → `void` — tears down and rebuilds the shared relay pool, replaying every live subscription (recovers a mobile socket gone silently stale)
+
+### Rotating inboxes
+
+Every member evaluates the same pure rule against the same synced facts — coordination without coordination.
+
+- `rotationDue(circle, me, now)` → `boolean`
+- `refreshDue(circle, me, lastRefresh, now)` → `boolean`
+- `ROTATION_PERIOD_SEC`, `ROTATION_STAGGER_SEC`, `ROTATION_REFRESH_SEC` — 30 days, 1 day, 7 days
+
+### Offline outbox
+
+- `createOutbox(store)` → `{ size(), enqueue(event, relays, nowSec), prune(nowSec), flush(publish, nowSec) }` — retries already-signed events without losing items enqueued during an in-flight flush
+
+### Hex utilities
+
+- `fromHex(hex)` → `Uint8Array` — throws on malformed (odd-length or non-hex) input rather than silently mis-parsing
+- `toHex(bytes)` → `string`
+
+## Quick Examples
+
+```typescript
+import { giftWrap, giftUnwrap, publishSigned, subscribeGiftWraps, createRelayConfig } from '@forgesworn/roost-kit'
+
+// Caller owns relay policy — no defaults are baked in
+const { PRIVATE_RELAYS } = createRelayConfig({ privateRelays: ['wss://relay.example'] })
+
+// Wrap an event to a recipient's inbox tag and fan it out
+const wrap = await giftWrap(signer, recipientPubkey, { kind: 30078, content: 'hello', tags: [] })
+await publishSigned(PRIVATE_RELAYS, wrap)
+
+// Listen on my own inbox tag and unwrap what arrives
+const unsubscribe = subscribeGiftWraps(PRIVATE_RELAYS, myInboxTag, async (incoming) => {
+  const rumor = await giftUnwrap((peerPk, ct) => signer.nip44Decrypt(peerPk, ct), incoming)
+  if (rumor) console.log(rumor.kind, rumor.content)
+})
+```
+
+```typescript
+import { rotationDue, refreshDue, createOutbox, publishSigned } from '@forgesworn/roost-kit'
+
+// Each member evaluates the same pure rule against synced circle state
+if (rotationDue(circle, myPubkey, nowSec)) reseedCircle(circle)
+if (refreshDue(circle, myPubkey, lastRefresh, nowSec)) rewrapCurrentSeed(circle)
+
+// Pre-signed events survive a failed publish and retry on the next flush
+const outbox = createOutbox(store)
+outbox.enqueue(signedEvent, relays, nowSec)
+const { sent, dropped, remaining } = await outbox.flush(publishSigned, nowSec)
+```
+
+## Security boundary
+
+Relays are untrusted. Roost does not choose or endorse relay URLs, persist secrets, or silently fall back from Tor to clearnet — the caller validates its own trust policy, protects signer material, supplies durable outbox storage, and renders delivery failures honestly.

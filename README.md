@@ -34,8 +34,8 @@ commit:
 ## Main surfaces
 
 - `giftWrap`, `giftUnwrap`, `rawNip44Decrypt` for NIP-59 envelopes.
-- `publishSigned`, `subscribeGiftWraps`, `fetchGiftWrap` and
-  `fetchWordInvite` for relay transport.
+- `publishSigned`, `subscribeGiftWraps`, `fetchGiftWraps` and
+  `fetchWordInvites` for relay transport.
 - `createRelayConfig`, `resolveRelays`, `effectiveRelays` for caller-owned
   relay policy, including fail-loud Tor routing.
 - `rotationDue`, `refreshDue` for rotating inbox scheduling.
