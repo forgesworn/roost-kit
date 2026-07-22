@@ -19,7 +19,7 @@ Nostr transport primitives for private circles: NIP-59 gift wraps, relay fan-out
 - `src/transport.ts` — relay pool, publish fan-out, fetch/subscribe
 - `src/outbox.ts` — pre-signed offline outbox
 - `src/index.ts` — barrel re-export
-- `compatibility/v1/` — public fixtures freezing the wire contract for cross-repository consumers (Flock, Fledgling)
+- `compatibility/v1/` — public fixtures freezing the wire contract for cross-repository consumers (Flock and others)
 
 ## Exports
 

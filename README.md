@@ -4,7 +4,7 @@ Nostr transport primitives for private circles: signer types, NIP-59 gift
 wrapping, relay fan-out, rotating inbox schedules, and a pre-signed offline
 outbox.
 
-This package was extracted from Flock for reuse by Fledgling and other clients.
+This package was extracted from Flock for reuse by other ForgeSworn clients.
 It is framework-free and owns no storage, UI, environment configuration, relay
 defaults, or identity keys. Callers inject those concerns.
 

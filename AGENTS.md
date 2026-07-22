@@ -5,7 +5,7 @@ Instructions in this file apply to the entire repository.
 ## Project Summary
 
 - Nostr transport primitives for private circles: NIP-59 gift wraps, relay fan-out, rotating inboxes, and a pre-signed offline outbox.
-- Extracted from Flock for reuse by Fledgling and other clients. Framework-free — owns no storage, UI, environment configuration, relay defaults, or identity keys; callers inject those concerns.
+- Extracted from Flock for reuse by other ForgeSworn clients. Framework-free — owns no storage, UI, environment configuration, relay defaults, or identity keys; callers inject those concerns.
 - ESM-only package (`"type": "module"`).
 - Requires Node.js 22+.
 
@@ -27,7 +27,7 @@ Instructions in this file apply to the entire repository.
 - `src/transport.ts` — relay pool, publish fan-out, fetch/subscribe
 - `src/outbox.ts` — pre-signed offline outbox
 - `src/index.ts` — barrel re-export
-- `compatibility/v1/` — public fixtures freezing the wire contract (NIP-59 envelope semantics, expiry, wrong-key failure, relay fan-out accounting) for Flock/Fledgling and other cross-repository consumers
+- `compatibility/v1/` — public fixtures freezing the wire contract (NIP-59 envelope semantics, expiry, wrong-key failure, relay fan-out accounting) for Flock and other cross-repository consumers
 - `dist/` — build output (generated)
 
 ## Coding Conventions

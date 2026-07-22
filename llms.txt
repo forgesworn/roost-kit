@@ -1,6 +1,6 @@
 # @forgesworn/roost-kit
 
-> Nostr transport primitives for private circles: NIP-59 gift wraps, relay fan-out, rotating inboxes, and a pre-signed offline outbox. Extracted from Flock for reuse by Fledgling and other clients — framework-free, and owns no storage, UI, relay defaults, or identity keys; callers inject those concerns, and relays are treated as untrusted throughout.
+> Nostr transport primitives for private circles: NIP-59 gift wraps, relay fan-out, rotating inboxes, and a pre-signed offline outbox. Extracted from Flock for reuse by other ForgeSworn clients — framework-free, and owns no storage, UI, relay defaults, or identity keys; callers inject those concerns, and relays are treated as untrusted throughout.
 
 ESM-only, Node.js 22+. Single entry point — no subpath exports.
 
