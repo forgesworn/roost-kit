@@ -41,7 +41,7 @@
   },
   "dependencies": {
     "@noble/hashes": "^2.0.1",
-    "nostr-tools": "^2.23.9"
+    "nostr-tools": "2.23.9"
   },
   "devDependencies": {
     "@types/node": "^22",
