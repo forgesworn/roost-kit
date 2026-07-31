@@ -3,6 +3,7 @@ export type { SignedEvent, EventTemplate, Signer } from './signer.js'
 export { fromHex, toHex } from './hex.js'
 
 export {
+  MIN_WRAP_EXPIRY_SECONDS,
   WRAP_EXPIRY_SECONDS,
   giftWrap,
   giftUnwrap,
