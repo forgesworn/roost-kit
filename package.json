@@ -15,7 +15,8 @@
     "dist",
     "compatibility",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "llms.txt"
   ],
   "scripts": {
     "build": "tsc",
